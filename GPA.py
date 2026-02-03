@@ -2,35 +2,49 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import io
-import base64
+import secrets
 
 # Page configuration
 st.set_page_config(
-    page_title="SMIU GPA & CGPA Calculator",
+    page_title="SMIU GPA Calculator",
     page_icon="🎓",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# Initialize session state
+# ============= INITIALIZE SESSION STATE =============
 if 'admin_logged_in' not in st.session_state:
     st.session_state.admin_logged_in = False
-if 'current_user' not in st.session_state:
-    st.session_state.current_user = ""
-if 'gpa_data' not in st.session_state:
-    st.session_state.gpa_data = []
-if 'cgpa_data' not in st.session_state:
-    st.session_state.cgpa_data = []
-if 'settings' not in st.session_state:
-    st.session_state.settings = {
-        "admin_username": "admin",
-        "admin_password": "admin123",
-        "base_url": "https://smiumoiz.streamlit.app",
-        "short_url": "",
-        "app_name": "SMIU GPA & CGPA Calculator"
+    
+if 'admin_username' not in st.session_state:
+    st.session_state.admin_username = "admin"
+    
+if 'admin_password' not in st.session_state:
+    st.session_state.admin_password = "admin123"
+    
+if 'short_url_code' not in st.session_state:
+    st.session_state.short_url_code = None
+    
+if 'gpa_calculations' not in st.session_state:
+    st.session_state.gpa_calculations = []
+    
+if 'cgpa_calculations' not in st.session_state:
+    st.session_state.cgpa_calculations = []
+    
+if 'num_courses' not in st.session_state:
+    st.session_state.num_courses = 1
+    
+if 'num_semesters' not in st.session_state:
+    st.session_state.num_semesters = 1
+    
+if 'app_settings' not in st.session_state:
+    st.session_state.app_settings = {
+        'app_title': "SMIU GPA & CGPA Calculator",
+        'institution_name': "Sindh Madressatul Islam University",
+        'institution_logo': "https://www.smiu.edu.pk/themes/smiu/images/13254460_710745915734761_8157428650049174152_n.png",
+        'base_url': "http://localhost:8501"
     }
 
-# Grading table
+# ============= GRADING SYSTEM =============
 GRADE_TABLE = [
     (91, 100, 'A', 4.00),
     (80, 90, 'A-', 3.66),
@@ -46,723 +60,764 @@ GRADE_TABLE = [
 ]
 
 def get_grade_info(percentage):
+    """Get grade and GPA based on percentage"""
     for min_score, max_score, grade, gpa in GRADE_TABLE:
         if min_score <= percentage <= max_score:
             return grade, gpa
     return 'F', 0.00
 
-def export_to_excel(data, calculation_type, student_name=""):
+# ============= UTILITY FUNCTIONS =============
+def generate_short_url():
+    """Generate a random short URL code"""
+    return f"gpa-{secrets.token_hex(4)}"
+
+def export_to_excel(data, calculation_type, student_name=None):
+    """Export data to Excel format"""
     output = io.BytesIO()
     
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Add institution header
+        header_df = pd.DataFrame({
+            'Institution': [st.session_state.app_settings['institution_name']],
+            'Report Type': [calculation_type],
+            'Generated On': [datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
+        })
+        header_df.to_excel(writer, sheet_name='Report Info', index=False)
+        
         if calculation_type == 'GPA':
+            # Course details sheet
             courses_df = pd.DataFrame(data['courses'])
             courses_df.index = courses_df.index + 1
             courses_df.index.name = 'Course No.'
             courses_df.to_excel(writer, sheet_name='Course Details')
             
+            # Summary sheet
             summary_df = pd.DataFrame({
-                'Metric': ['Student Name', 'Total Credit Hours', 'Total Grade Points', 'Final GPA'],
-                'Value': [student_name,
-                         data['summary']['total_credit_hours'], 
+                'Metric': ['Total Credit Hours', 'Total Grade Points', 'Final GPA'],
+                'Value': [data['summary']['total_credit_hours'], 
                          data['summary']['total_grade_points'],
                          data['summary']['gpa']]
             })
             summary_df.to_excel(writer, sheet_name='Summary', index=False)
             
-        else:
+        elif calculation_type == 'CGPA':
+            # Semester details sheet
             semesters_df = pd.DataFrame(data['semesters'])
             semesters_df.index = semesters_df.index + 1
             semesters_df.index.name = 'Semester No.'
             semesters_df.to_excel(writer, sheet_name='Semester Details')
             
+            # Summary sheet
             summary_df = pd.DataFrame({
-                'Metric': ['Student Name', 'Total Credit Hours', 'Total Grade Points', 'Final CGPA'],
-                'Value': [student_name,
-                         data['summary']['total_credit_hours'], 
+                'Metric': ['Total Credit Hours', 'Total Grade Points', 'Final CGPA'],
+                'Value': [data['summary']['total_credit_hours'], 
                          data['summary']['total_grade_points'],
                          data['summary']['cgpa']]
             })
             summary_df.to_excel(writer, sheet_name='Summary', index=False)
+        
+        elif calculation_type == 'BULK_GPA':
+            # Create consolidated report
+            all_data = []
+            for student_data in data:
+                student_name = student_data['student_name']
+                for course in student_data['courses']:
+                    all_data.append({
+                        'Student Name': student_name,
+                        'Timestamp': student_data['timestamp'],
+                        'Course Name': course['Course Name'],
+                        'Total Marks': course['Total Marks'],
+                        'Obtained Marks': course['Obtained Marks'],
+                        'Percentage': course['Percentage'],
+                        'Credit Hours': course['Credit Hours'],
+                        'Grade': course['Grade'],
+                        'GPA': course['GPA'],
+                        'Grade Points': course['Grade Points']
+                    })
+            
+            if all_data:
+                bulk_df = pd.DataFrame(all_data)
+                bulk_df.to_excel(writer, sheet_name='All GPA Records', index=False)
+        
+        elif calculation_type == 'BULK_CGPA':
+            # Create consolidated report
+            all_data = []
+            for student_data in data:
+                student_name = student_data['student_name']
+                for semester in student_data['semesters']:
+                    all_data.append({
+                        'Student Name': student_name,
+                        'Timestamp': student_data['timestamp'],
+                        'Semester': semester['Semester'],
+                        'GPA': semester['GPA'],
+                        'Credit Hours': semester['Credit Hours'],
+                        'Grade Points': semester['Grade Points']
+                    })
+            
+            if all_data:
+                bulk_df = pd.DataFrame(all_data)
+                bulk_df.to_excel(writer, sheet_name='All CGPA Records', index=False)
     
     output.seek(0)
     return output
 
-def export_all_gpa_data():
-    """Export all GPA data to Excel"""
-    if not st.session_state.gpa_data:
-        return None
-    
-    output = io.BytesIO()
-    all_data = []
-    
-    for entry in st.session_state.gpa_data:
-        for course in entry['courses']:
-            all_data.append({
-                'Student Name': entry['student_name'],
-                'Timestamp': entry['timestamp'],
-                'Course Name': course['Course Name'],
-                'Total Marks': course['Total Marks'],
-                'Obtained Marks': course['Obtained Marks'],
-                'Credit Hours': course['Credit Hours'],
-                'Grade': course['Grade'],
-                'GPA': course['GPA'],
-                'Grade Points': course['Grade Points']
-            })
-    
-    df = pd.DataFrame(all_data)
-    
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, sheet_name='All GPA Records', index=False)
-        
-        # Summary sheet
-        summary_data = []
-        for entry in st.session_state.gpa_data:
-            summary_data.append({
-                'Student Name': entry['student_name'],
-                'Timestamp': entry['timestamp'],
-                'Total Credit Hours': entry['summary']['total_credit_hours'],
-                'Total Grade Points': entry['summary']['total_grade_points'],
-                'GPA': entry['summary']['gpa'],
-                'Number of Courses': len(entry['courses'])
-            })
-        
-        summary_df = pd.DataFrame(summary_data)
-        summary_df.to_excel(writer, sheet_name='GPA Summary', index=False)
-    
-    output.seek(0)
-    return output
-
-def export_all_cgpa_data():
-    """Export all CGPA data to Excel"""
-    if not st.session_state.cgpa_data:
-        return None
-    
-    output = io.BytesIO()
-    all_data = []
-    
-    for entry in st.session_state.cgpa_data:
-        for semester in entry['semesters']:
-            all_data.append({
-                'Student Name': entry['student_name'],
-                'Timestamp': entry['timestamp'],
-                'Semester': semester['Semester'],
-                'GPA': semester['GPA'],
-                'Credit Hours': semester['Credit Hours'],
-                'Grade Points': semester['Grade Points']
-            })
-    
-    df = pd.DataFrame(all_data)
-    
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, sheet_name='All CGPA Records', index=False)
-        
-        # Summary sheet
-        summary_data = []
-        for entry in st.session_state.cgpa_data:
-            summary_data.append({
-                'Student Name': entry['student_name'],
-                'Timestamp': entry['timestamp'],
-                'Total Credit Hours': entry['summary']['total_credit_hours'],
-                'Total Grade Points': entry['summary']['total_grade_points'],
-                'CGPA': entry['summary']['cgpa'],
-                'Number of Semesters': len(entry['semesters'])
-            })
-        
-        summary_df = pd.DataFrame(summary_data)
-        summary_df.to_excel(writer, sheet_name='CGPA Summary', index=False)
-    
-    output.seek(0)
-    return output
-
-def validate_url(url):
-    """Simple URL validation"""
-    if url:
-        return url.startswith('http://') or url.startswith('https://')
-    return True
-
-# Custom CSS
+# ============= CUSTOM CSS =============
 st.markdown("""
     <style>
+    /* Main header styling */
     .main-header {
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(90deg, #1a2980 0%, #26d0ce 100%);
         padding: 2rem;
-        border-radius: 10px;
+        border-radius: 15px;
         color: white;
         text-align: center;
         margin-bottom: 2rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
+    
+    /* Metric cards */
     .metric-card {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         padding: 1.5rem;
-        border-radius: 10px;
+        border-radius: 12px;
         color: white;
         text-align: center;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     }
-    .result-card {
-        background: #f0f9ff;
-        padding: 1.5rem;
-        border-radius: 10px;
-        border-left: 4px solid #667eea;
-        margin: 1rem 0;
-    }
+    
+    /* Button styling */
     .stButton>button {
-        background-color: #667eea;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
         color: white;
         font-weight: bold;
+        border: none;
+        border-radius: 8px;
+        padding: 0.75rem 1.5rem;
     }
-    .admin-panel {
-        background: #f8f9fa;
-        padding: 1.5rem;
-        border-radius: 10px;
-        border: 2px solid #667eea;
-        margin: 1rem 0;
-    }
-    .login-form {
-        max-width: 400px;
-        margin: 0 auto;
-        padding: 2rem;
+    
+    /* Admin section styling */
+    .admin-section {
         background: white;
-        border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    .warning-box {
-        background-color: #fff3cd;
-        border: 1px solid #ffc107;
-        border-radius: 5px;
         padding: 1rem;
-        margin: 1rem 0;
+        border-radius: 10px;
+        border: 2px solid #e0e0e0;
+        margin: 0.5rem 0;
     }
+    
+    /* URL box styling */
+    .url-box {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        border: 2px dashed #667eea;
+        font-family: monospace;
+        margin: 1rem 0;
+        word-break: break-all;
+    }
+    
+    /* Hide Streamlit branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
 
-# Main header
-st.markdown(f"""
-    <div class="main-header" style="text-align: center;">
-        <img src="https://www.smiu.edu.pk/themes/smiu/images/13254460_710745915734761_8157428650049174152_n.png" width="150">
-        <h1>Welcome to {st.session_state.settings['app_name']}</h1>
-        <p style="font-size: 14px; margin-top: 10px;">Access URL: {st.session_state.settings['base_url']}</p>
-    </div>
-""", unsafe_allow_html=True)
-
-# Sidebar for Admin Login
+# ============= SIDEBAR - ADMIN PANEL =============
 with st.sidebar:
-    st.markdown("### 🔐 Admin Access")
+    st.markdown("## 🔐 Admin Panel")
     
+    # Admin Login/Logout Section
     if not st.session_state.admin_logged_in:
-        st.markdown("---")
-        admin_username = st.text_input("Username", key="admin_user")
-        admin_password = st.text_input("Password", type="password", key="admin_pass")
+        st.markdown("### Admin Login")
         
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Login", key="admin_login", use_container_width=True):
-                if admin_username == st.session_state.settings['admin_username'] and admin_password == st.session_state.settings['admin_password']:
-                    st.session_state.admin_logged_in = True
-                    st.session_state.current_user = admin_username
-                    st.success("✅ Login successful!")
-                    st.rerun()
-                else:
-                    st.error("❌ Invalid credentials!")
+        admin_user = st.text_input("Username", key="admin_user")
+        admin_pass = st.text_input("Password", type="password", key="admin_pass")
         
-        with col2:
-            if st.button("Reset", key="reset_login", use_container_width=True):
+        if st.button("Login", key="login_btn", use_container_width=True):
+            if admin_user == st.session_state.admin_username and admin_pass == st.session_state.admin_password:
+                st.session_state.admin_logged_in = True
                 st.rerun()
+            else:
+                st.error("❌ Invalid credentials!")
     else:
-        st.success(f"✅ Logged in as: {st.session_state.current_user}")
-        if st.button("🚪 Logout", key="admin_logout", use_container_width=True):
-            st.session_state.admin_logged_in = False
-            st.session_state.current_user = ""
-            st.rerun()
+        st.success(f"✅ Logged in as **{st.session_state.admin_username}**")
         
+        # Admin Functions
         st.markdown("---")
-        st.markdown("### 📊 Data Management")
+        st.markdown("### ⚙️ Admin Functions")
         
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("GPA Records", len(st.session_state.gpa_data))
-        with col2:
-            st.metric("CGPA Records", len(st.session_state.cgpa_data))
+        # Change Credentials
+        with st.expander("🔑 Change Credentials"):
+            new_user = st.text_input("New Username", value=st.session_state.admin_username, key="new_user")
+            new_pass = st.text_input("New Password", type="password", value=st.session_state.admin_password, key="new_pass")
+            
+            if st.button("Update Credentials", key="update_creds"):
+                if new_user and new_pass:
+                    st.session_state.admin_username = new_user
+                    st.session_state.admin_password = new_pass
+                    st.success("✅ Credentials updated!")
+                else:
+                    st.error("❌ Both fields are required!")
         
-        if st.button("🗑️ Clear All Data", key="clear_data", use_container_width=True):
-            st.session_state.gpa_data = []
-            st.session_state.cgpa_data = []
-            st.success("✅ All data cleared successfully!")
-            st.rerun()
-
-# Create tabs
-if st.session_state.admin_logged_in:
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 GPA Calculator", "📈 CGPA Calculator", "📋 Grading Scale", "⚙️ Admin Panel", "📥 Data Export"])
-else:
-    tab1, tab2, tab3 = st.tabs(["📊 GPA Calculator", "📈 CGPA Calculator", "📋 Grading Scale"])
-
-# ============= GPA CALCULATOR =============
-with tab1:
-    st.header("Semester GPA Calculator")
-    
-    # User name input
-    st.subheader("👤 Student Information")
-    user_name = st.text_input("Enter Your Name *", placeholder="e.g., M.Moiz", key='gpa_user_name')
-    
-    if not user_name:
-        st.warning("⚠️ Please enter your name to continue")
-    
-    st.markdown("---")
-    
-    # Number of courses
-    num_courses = st.number_input("How many courses do you have?", 
-                                  min_value=1, max_value=20, 
-                                  value=3,
-                                  key='courses_input')
-    
-    # Course inputs
-    courses_data = []
-    
-    for i in range(num_courses):
-        st.subheader(f"📚 Course {i+1}")
-        
-        course_name = st.text_input(f"Course Name", 
-                                    placeholder="e.g., Data Structures",
-                                    key=f'course_name_{i}')
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            total_marks = st.number_input(f"Total Marks", 
-                                         min_value=0.0, 
-                                         value=100.0,
-                                         key=f'total_{i}')
-        with col2:
-            obtained_marks = st.number_input(f"Obtained Marks", 
-                                            min_value=0.0, 
-                                            max_value=total_marks,
-                                            value=0.0,
-                                            key=f'obtained_{i}')
-        with col3:
-            credit_hours = st.number_input(f"Credit Hours", 
-                                          min_value=0.0,
-                                          value=3.0,
-                                          key=f'credit_{i}')
-        
-        courses_data.append({
-            'course_name': course_name if course_name else f"Course {i+1}",
-            'total_marks': total_marks,
-            'obtained_marks': obtained_marks,
-            'credit_hours': credit_hours
-        })
-        
-        if i < num_courses - 1:
-            st.markdown("---")
-    
-    # Calculate button
-    if st.button("🧮 Calculate GPA", type="primary", key='calc_gpa'):
-        if not user_name:
-            st.error("❌ Please enter your name!")
-            st.stop()
-        
-        total_grade_points = 0
-        total_credit_hours = 0
-        course_results = []
-        
-        for i, course in enumerate(courses_data):
-            if course['total_marks'] > 0 and course['credit_hours'] > 0:
-                percentage = (course['obtained_marks'] / course['total_marks']) * 100
-                grade, gpa = get_grade_info(percentage)
-                grade_points = gpa * course['credit_hours']
+        # Short URL Management
+        with st.expander("🔗 Short URL"):
+            if st.session_state.short_url_code:
+                full_url = f"{st.session_state.app_settings['base_url']}/?short={st.session_state.short_url_code}"
+                st.success("✅ Short URL is ACTIVE")
+                st.markdown(f'<div class="url-box">{full_url}</div>', unsafe_allow_html=True)
+                st.caption("Share this URL with students")
                 
-                total_grade_points += grade_points
-                total_credit_hours += course['credit_hours']
-                
-                course_results.append({
-                    'Course Name': course['course_name'],
-                    'Total Marks': course['total_marks'],
-                    'Obtained Marks': course['obtained_marks'],
-                    'Percentage': f"{percentage:.2f}%",
-                    'Credit Hours': course['credit_hours'],
-                    'Grade': grade,
-                    'GPA': gpa,
-                    'Grade Points': f"{grade_points:.2f}"
-                })
-        
-        if total_credit_hours > 0:
-            final_gpa = total_grade_points / total_credit_hours
-            
-            # Display results
-            st.success(f"✅ GPA Calculated Successfully for {user_name}!")
-            
-            # Results table
-            st.subheader("📊 Course-wise Results")
-            df = pd.DataFrame(course_results)
-            st.dataframe(df, use_container_width=True, hide_index=True)
-            
-            # Summary metrics
-            st.subheader("📈 Summary")
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.metric("Total Credit Hours", f"{total_credit_hours:.2f}")
-            with col2:
-                st.metric("Total Grade Points", f"{total_grade_points:.2f}")
-            with col3:
-                st.metric("Semester GPA", f"{final_gpa:.2f}")
-            
-            # Save to session state
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            st.session_state.gpa_data.append({
-                'student_name': user_name,
-                'timestamp': timestamp,
-                'courses': course_results,
-                'summary': {
-                    'gpa': final_gpa,
-                    'total_credit_hours': total_credit_hours,
-                    'total_grade_points': total_grade_points
-                }
-            })
-            
-            st.info("❤ Thank You! For using the SMIU Semester GPA Calculator.")
-            
-            # Export to Excel for student
-            export_data = {
-                'courses': course_results,
-                'summary': {
-                    'gpa': final_gpa,
-                    'total_credit_hours': total_credit_hours,
-                    'total_grade_points': total_grade_points
-                }
-            }
-            excel_file = export_to_excel(export_data, 'GPA', user_name)
-            
-            st.download_button(
-                label="📥 Download Your GPA Report",
-                data=excel_file,
-                file_name=f"GPA_Report_{user_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
-        else:
-            st.error("❌ Please enter valid credit hours!")
-
-# ============= CGPA CALCULATOR =============
-with tab2:
-    st.header("Overall CGPA Calculator")
-    
-    # User name input
-    st.subheader("👤 Student Information")
-    user_name_cgpa = st.text_input("Enter Your Name *", placeholder="e.g., M.Moiz", key='cgpa_user_name')
-    
-    if not user_name_cgpa:
-        st.warning("⚠️ Please enter your name to continue")
-    
-    st.markdown("---")
-    
-    # Number of semesters
-    num_semesters = st.number_input("How many semesters do you want to calculate?", 
-                                    min_value=1, max_value=8, 
-                                    value=1,
-                                    key='semesters_input')
-    
-    # Semester inputs
-    semesters_data = []
-    
-    for i in range(num_semesters):
-        st.subheader(f"Semester {i+1}")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            semester_gpa = st.number_input(f"GPA", 
-                                          min_value=0.0, 
-                                          max_value=4.0,
-                                          value=0.0,
-                                          step=0.01,
-                                          key=f'sem_gpa_{i}')
-        with col2:
-            semester_credits = st.number_input(f"Credit Hours", 
-                                              min_value=0.0,
-                                              value=0.0,
-                                              key=f'sem_credits_{i}')
-        
-        semesters_data.append({
-            'gpa': semester_gpa,
-            'credit_hours': semester_credits
-        })
-        
-        if i < num_semesters - 1:
-            st.markdown("---")
-    
-    # Calculate button
-    if st.button("🧮 Calculate CGPA", type="primary", key='calc_cgpa'):
-        if not user_name_cgpa:
-            st.error("❌ Please enter your name!")
-            st.stop()
-        
-        total_grade_points = 0
-        total_credit_hours = 0
-        semester_results = []
-        
-        for i, semester in enumerate(semesters_data):
-            if semester['credit_hours'] > 0:
-                grade_points = semester['gpa'] * semester['credit_hours']
-                
-                total_grade_points += grade_points
-                total_credit_hours += semester['credit_hours']
-                
-                semester_results.append({
-                    'Semester': f"Semester {i+1}",
-                    'GPA': f"{semester['gpa']:.2f}",
-                    'Credit Hours': semester['credit_hours'],
-                    'Grade Points': f"{grade_points:.2f}"
-                })
-        
-        if total_credit_hours > 0:
-            final_cgpa = total_grade_points / total_credit_hours
-            
-            # Display results
-            st.success(f"✅ CGPA Calculated Successfully for {user_name_cgpa}!")
-            
-            # Results table
-            st.subheader("📊 Semester-wise Results")
-            df = pd.DataFrame(semester_results)
-            st.dataframe(df, use_container_width=True, hide_index=True)
-            
-            # Summary metrics
-            st.subheader("📈 Summary")
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.metric("Total Credit Hours", f"{total_credit_hours:.2f}")
-            with col2:
-                st.metric("Total Grade Points", f"{total_grade_points:.2f}")
-            with col3:
-                st.metric("Overall CGPA", f"{final_cgpa:.2f}")
-            
-            # Save to session state
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            st.session_state.cgpa_data.append({
-                'student_name': user_name_cgpa,
-                'timestamp': timestamp,
-                'semesters': semester_results,
-                'summary': {
-                    'cgpa': final_cgpa,
-                    'total_credit_hours': total_credit_hours,
-                    'total_grade_points': total_grade_points
-                }
-            })
-            
-            st.info("❤ Thank You! For using the SMIU CGPA Calculator.")
-            
-            # Export to Excel for student
-            export_data = {
-                'semesters': semester_results,
-                'summary': {
-                    'cgpa': final_cgpa,
-                    'total_credit_hours': total_credit_hours,
-                    'total_grade_points': total_grade_points
-                }
-            }
-            excel_file = export_to_excel(export_data, 'CGPA', user_name_cgpa)
-            
-            st.download_button(
-                label="📥 Download Your CGPA Report",
-                data=excel_file,
-                file_name=f"CGPA_Report_{user_name_cgpa}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
-        else:
-            st.error("❌ Please enter valid credit hours!")
-
-# ============= GRADING SCALE =============
-with tab3:
-    st.header("📋 Grading Scale Reference")
-    
-    grade_df = pd.DataFrame(GRADE_TABLE, columns=['Min %', 'Max %', 'Letter Grade', 'Grade Point'])
-    grade_df['Percentage Range'] = grade_df.apply(lambda x: f"{x['Min %']}% - {x['Max %']}%", axis=1)
-    
-    display_df = grade_df[['Percentage Range', 'Letter Grade', 'Grade Point']]
-    
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
-    
-    st.info("""
-    **Note:** 
-    - GPA = Sum of (Grade Points × Credit Hours) / Total Credit Hours
-    - CGPA = Sum of (Semester GPA × Semester Credit Hours) / Total Credit Hours
-    """)
-
-# ============= ADMIN PANEL =============
-if st.session_state.admin_logged_in:
-    with tab4:
-        st.header("⚙️ Admin Panel")
-        
-        # Account Settings
-        st.subheader("🔐 Account Settings")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            new_username = st.text_input("New Username", value=st.session_state.settings['admin_username'])
-        with col2:
-            new_password = st.text_input("New Password", type="password", value=st.session_state.settings['admin_password'])
-        
-        if st.button("💾 Update Credentials", key="update_creds", use_container_width=True):
-            if new_username and new_password:
-                st.session_state.settings['admin_username'] = new_username
-                st.session_state.settings['admin_password'] = new_password
-                st.success("✅ Credentials updated successfully!")
+                if st.button("Disable Short URL", key="disable_url"):
+                    st.session_state.short_url_code = None
+                    st.rerun()
             else:
-                st.error("❌ Username and password cannot be empty!")
+                st.warning("⚠️ Short URL is DISABLED")
+                if st.button("Generate Short URL", key="gen_url"):
+                    st.session_state.short_url_code = generate_short_url()
+                    st.rerun()
         
-        st.markdown("---")
+        # Data Management
+        with st.expander("📊 Data Management"):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("GPA Calculations", len(st.session_state.gpa_calculations))
+            with col2:
+                st.metric("CGPA Calculations", len(st.session_state.cgpa_calculations))
+            
+            if st.session_state.gpa_calculations:
+                excel_file = export_to_excel(st.session_state.gpa_calculations, 'BULK_GPA')
+                st.download_button(
+                    label="📥 Download All GPA Data",
+                    data=excel_file,
+                    file_name=f"All_GPA_Data_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="dl_all_gpa"
+                )
+            
+            if st.session_state.cgpa_calculations:
+                excel_file = export_to_excel(st.session_state.cgpa_calculations, 'BULK_CGPA')
+                st.download_button(
+                    label="📥 Download All CGPA Data",
+                    data=excel_file,
+                    file_name=f"All_CGPA_Data_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="dl_all_cgpa"
+                )
+            
+            if st.button("🗑️ Clear All Data", key="clear_data"):
+                st.session_state.gpa_calculations = []
+                st.session_state.cgpa_calculations = []
+                st.success("✅ All data cleared!")
         
-        # Application Settings
-        st.subheader("🌐 Application Settings")
-        app_name = st.text_input("Application Name", value=st.session_state.settings['app_name'])
-        base_url = st.text_input("Base URL", value=st.session_state.settings['base_url'])
-        short_url = st.text_input("Short URL (Optional)", value=st.session_state.settings['short_url'])
-        
-        if st.button("🌐 Update URLs", key="update_urls", use_container_width=True):
-            if validate_url(base_url):
-                st.session_state.settings['base_url'] = base_url
-                st.session_state.settings['app_name'] = app_name
-                st.session_state.settings['short_url'] = short_url
-                st.success("✅ URLs updated successfully!")
+        # App Settings
+        with st.expander("🎨 App Settings"):
+            new_title = st.text_input("App Title", value=st.session_state.app_settings['app_title'], key="new_title")
+            new_inst = st.text_input("Institution Name", value=st.session_state.app_settings['institution_name'], key="new_inst")
+            new_base = st.text_input("Base URL", value=st.session_state.app_settings['base_url'], key="new_base")
+            
+            if st.button("Save Settings", key="save_settings"):
+                st.session_state.app_settings['app_title'] = new_title
+                st.session_state.app_settings['institution_name'] = new_inst
+                st.session_state.app_settings['base_url'] = new_base
+                st.success("✅ Settings saved!")
                 st.rerun()
-            else:
-                st.error("❌ Please enter a valid URL starting with http:// or https://")
         
+        # Logout Button
         st.markdown("---")
-        
-        # Data Summary
-        st.subheader("📊 Data Summary")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.info(f"**GPA Records:** {len(st.session_state.gpa_data)} students")
-            if st.session_state.gpa_data:
-                gpa_df = pd.DataFrame([{
-                    'Student': entry['student_name'],
-                    'Time': entry['timestamp'],
-                    'GPA': entry['summary']['gpa']
-                } for entry in st.session_state.gpa_data])
-                st.dataframe(gpa_df, use_container_width=True, hide_index=True)
-            else:
-                st.warning("No GPA records yet")
-        
-        with col2:
-            st.info(f"**CGPA Records:** {len(st.session_state.cgpa_data)} students")
-            if st.session_state.cgpa_data:
-                cgpa_df = pd.DataFrame([{
-                    'Student': entry['student_name'],
-                    'Time': entry['timestamp'],
-                    'CGPA': entry['summary']['cgpa']
-                } for entry in st.session_state.cgpa_data])
-                st.dataframe(cgpa_df, use_container_width=True, hide_index=True)
-            else:
-                st.warning("No CGPA records yet")
+        if st.button("🚪 Logout", type="primary", key="logout_btn", use_container_width=True):
+            st.session_state.admin_logged_in = False
+            st.rerun()
 
-# ============= DATA EXPORT =============
+# ============= ACCESS CONTROL =============
+# Get query parameters
+query_params = st.experimental_get_query_params()
+has_valid_short_url = False
+
+# Check if short URL is provided and valid
+if 'short' in query_params:
+    if st.session_state.short_url_code and query_params['short'][0] == st.session_state.short_url_code:
+        has_valid_short_url = True
+
+# Check access
+access_granted = False
+
 if st.session_state.admin_logged_in:
-    with tab5:
-        st.header("📥 Data Export")
+    # Admin always has access
+    access_granted = True
+elif st.session_state.short_url_code is None:
+    # No short URL required, public access
+    access_granted = True
+elif has_valid_short_url:
+    # Valid short URL provided
+    access_granted = True
+else:
+    # No access
+    access_granted = False
+    st.error("""
+    ## ⚠️ Access Restricted
+    
+    This calculator requires a special access URL provided by your institution.
+    
+    **Please contact your administrator for the correct link.**
+    
+    If you are an administrator, please login using the sidebar.
+    """)
+    st.stop()
+
+# ============= MAIN APPLICATION =============
+if access_granted:
+    # Show access notification
+    if has_valid_short_url:
+        st.info("✅ Access granted via short URL")
+    
+    # Display Header
+    st.markdown(f"""
+    <div class="main-header">
+        <img src="{st.session_state.app_settings['institution_logo']}" width="150" style="margin-bottom: 1rem;">
+        <h1>{st.session_state.app_settings['app_title']}</h1>
+        <p style="margin-top: 0.5rem; opacity: 0.9;">{st.session_state.app_settings['institution_name']}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Main Calculator Tabs
+    tab1, tab2, tab3 = st.tabs(["📊 GPA Calculator", "📈 CGPA Calculator", "📋 Grading Scale"])
+    
+    # ============= GPA CALCULATOR =============
+    with tab1:
+        st.header("🎯 Semester GPA Calculator")
         
-        # Individual Student Export
-        st.subheader("👤 Individual Student Export")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("##### GPA Records")
-            if st.session_state.gpa_data:
-                gpa_students = list(set([entry['student_name'] for entry in st.session_state.gpa_data]))
-                selected_gpa_student = st.selectbox("Select Student for GPA Export", gpa_students)
-                
-                if selected_gpa_student:
-                    selected_gpa_record = next((record for record in st.session_state.gpa_data 
-                                               if record['student_name'] == selected_gpa_student), None)
-                    
-                    if selected_gpa_record:
-                        excel_file = export_to_excel({
-                            'courses': selected_gpa_record['courses'],
-                            'summary': selected_gpa_record['summary']
-                        }, 'GPA', selected_gpa_student)
-                        
-                        st.download_button(
-                            label=f"📥 Download {selected_gpa_student}'s GPA Report",
-                            data=excel_file,
-                            file_name=f"GPA_Report_{selected_gpa_student}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True
-                        )
-            else:
-                st.info("No GPA records available")
-        
-        with col2:
-            st.markdown("##### CGPA Records")
-            if st.session_state.cgpa_data:
-                cgpa_students = list(set([entry['student_name'] for entry in st.session_state.cgpa_data]))
-                selected_cgpa_student = st.selectbox("Select Student for CGPA Export", cgpa_students)
-                
-                if selected_cgpa_student:
-                    selected_cgpa_record = next((record for record in st.session_state.cgpa_data 
-                                                 if record['student_name'] == selected_cgpa_student), None)
-                    
-                    if selected_cgpa_record:
-                        excel_file = export_to_excel({
-                            'semesters': selected_cgpa_record['semesters'],
-                            'summary': selected_cgpa_record['summary']
-                        }, 'CGPA', selected_cgpa_student)
-                        
-                        st.download_button(
-                            label=f"📥 Download {selected_cgpa_student}'s CGPA Report",
-                            data=excel_file,
-                            file_name=f"CGPA_Report_{selected_cgpa_student}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True
-                        )
-            else:
-                st.info("No CGPA records available")
+        # Student Information
+        with st.expander("👤 Student Information (Optional)", expanded=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                user_name = st.text_input("Student Name", placeholder="e.g., Muhammad Moiz", key='gpa_user_name')
+            with col2:
+                student_id = st.text_input("Student ID", placeholder="e.g., SM123456", key='gpa_student_id')
         
         st.markdown("---")
         
-        # Bulk Export
-        st.subheader("📦 Bulk Data Export")
+        # Course Configuration
+        st.subheader("📚 Course Configuration")
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            num_courses = st.number_input("Number of Courses", min_value=1, max_value=20, 
+                                         value=st.session_state.num_courses, key='courses_input')
+        with col2:
+            if st.button("🔄 Reset", key="reset_courses"):
+                st.session_state.num_courses = 1
+                st.rerun()
         
+        # Course Inputs
+        courses_data = []
+        
+        for i in range(st.session_state.num_courses):
+            st.markdown(f"### Course {i+1}")
+            
+            course_col1, course_col2 = st.columns([2, 3])
+            with course_col1:
+                course_name = st.text_input(f"Course Name", placeholder=f"e.g., Data Structures", 
+                                           key=f'course_name_{i}')
+            
+            with course_col2:
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    total_marks = st.number_input(f"Total Marks", min_value=0.0, value=100.0,
+                                                 step=1.0, key=f'total_{i}')
+                with col2:
+                    obtained_marks = st.number_input(f"Obtained Marks", min_value=0.0, value=0.0,
+                                                    step=0.5, key=f'obtained_{i}')
+                with col3:
+                    credit_hours = st.number_input(f"Credit Hours", min_value=0.0, value=3.0,
+                                                  step=0.5, key=f'credit_{i}')
+            
+            courses_data.append({
+                'course_name': course_name if course_name else f"Course {i+1}",
+                'total_marks': total_marks,
+                'obtained_marks': obtained_marks,
+                'credit_hours': credit_hours
+            })
+            
+            if i < st.session_state.num_courses - 1:
+                st.markdown("---")
+        
+        # Calculate Button
+        st.markdown("---")
+        if st.button("🧮 Calculate GPA", type="primary", key='calc_gpa', use_container_width=True):
+            # Validate inputs
+            valid_inputs = True
+            for i, course in enumerate(courses_data):
+                if course['credit_hours'] <= 0:
+                    st.error(f"❌ Course {i+1}: Credit hours must be greater than 0")
+                    valid_inputs = False
+                if course['total_marks'] <= 0:
+                    st.error(f"❌ Course {i+1}: Total marks must be greater than 0")
+                    valid_inputs = False
+            
+            if valid_inputs:
+                total_grade_points = 0
+                total_credit_hours = 0
+                course_results = []
+                
+                # Calculate for each course
+                for i, course in enumerate(courses_data):
+                    percentage = (course['obtained_marks'] / course['total_marks']) * 100
+                    grade, gpa = get_grade_info(percentage)
+                    grade_points = gpa * course['credit_hours']
+                    
+                    total_grade_points += grade_points
+                    total_credit_hours += course['credit_hours']
+                    
+                    course_results.append({
+                        'Course Name': course['course_name'],
+                        'Total Marks': course['total_marks'],
+                        'Obtained Marks': course['obtained_marks'],
+                        'Percentage': f"{percentage:.2f}%",
+                        'Credit Hours': course['credit_hours'],
+                        'Grade': grade,
+                        'GPA': f"{gpa:.2f}",
+                        'Grade Points': f"{grade_points:.2f}"
+                    })
+                
+                if total_credit_hours > 0:
+                    final_gpa = total_grade_points / total_credit_hours
+                    
+                    # Display results
+                    st.success("### ✅ GPA Calculated Successfully!")
+                    
+                    # Course Results Table
+                    st.subheader("📊 Course-wise Results")
+                    df = pd.DataFrame(course_results)
+                    st.dataframe(df, use_container_width=True, hide_index=True)
+                    
+                    # Summary Metrics
+                    st.subheader("📈 Semester Summary")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.markdown(f"""
+                            <div class="metric-card">
+                                <h4>Total Credit Hours</h4>
+                                <h2>{total_credit_hours:.2f}</h2>
+                            </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col2:
+                        st.markdown(f"""
+                            <div class="metric-card">
+                                <h4>Total Grade Points</h4>
+                                <h2>{total_grade_points:.2f}</h2>
+                            </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col3:
+                        gpa_color = "#28a745" if final_gpa >= 3.0 else "#ffc107" if final_gpa >= 2.0 else "#dc3545"
+                        st.markdown(f"""
+                            <div class="metric-card">
+                                <h4>Semester GPA</h4>
+                                <h2 style="color: {gpa_color}">{final_gpa:.2f}</h2>
+                            </div>
+                        """, unsafe_allow_html=True)
+                    
+                    # Store calculation
+                    student_name = user_name if user_name else f"Student_{len(st.session_state.gpa_calculations)+1}"
+                    
+                    calculation_data = {
+                        'student_name': student_name,
+                        'student_id': student_id,
+                        'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        'courses': course_results,
+                        'summary': {
+                            'gpa': final_gpa,
+                            'total_credit_hours': total_credit_hours,
+                            'total_grade_points': total_grade_points
+                        }
+                    }
+                    
+                    st.session_state.gpa_calculations.append(calculation_data)
+                    
+                    # Download Section
+                    st.markdown("---")
+                    st.subheader("📥 Download Results")
+                    
+                    export_data = {
+                        'courses': course_results,
+                        'summary': {
+                            'gpa': final_gpa,
+                            'total_credit_hours': total_credit_hours,
+                            'total_grade_points': total_grade_points
+                        }
+                    }
+                    
+                    excel_file = export_to_excel(export_data, 'GPA', student_name)
+                    
+                    st.download_button(
+                        label="⬇️ Download GPA Report",
+                        data=excel_file,
+                        file_name=f"GPA_Report_{student_name.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+                    
+                    # Success Message
+                    st.info("### ❤️ Thank You! Your GPA has been calculated successfully.")
+                    
+                    # Update course count
+                    st.session_state.num_courses = len(courses_data)
+                else:
+                    st.error("❌ Total credit hours must be greater than zero!")
+    
+    # ============= CGPA CALCULATOR =============
+    with tab2:
+        st.header("📈 Overall CGPA Calculator")
+        
+        # Student Information
+        with st.expander("👤 Student Information (Optional)", expanded=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                user_name_cgpa = st.text_input("Student Name", placeholder="e.g., Muhammad Moiz", 
+                                              key='cgpa_user_name')
+            with col2:
+                student_id_cgpa = st.text_input("Student ID", placeholder="e.g., SM123456", 
+                                               key='cgpa_student_id')
+        
+        st.markdown("---")
+        
+        # Semester Configuration
+        st.subheader("📅 Semester Configuration")
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            num_semesters = st.number_input("Number of Semesters", min_value=1, max_value=12,
+                                           value=st.session_state.num_semesters, key='semesters_input')
+        with col2:
+            if st.button("🔄 Reset", key="reset_semesters"):
+                st.session_state.num_semesters = 1
+                st.rerun()
+        
+        # Semester Inputs
+        semesters_data = []
+        
+        for i in range(st.session_state.num_semesters):
+            st.markdown(f"### Semester {i+1}")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                semester_gpa = st.number_input(f"Semester GPA", min_value=0.0, max_value=4.0,
+                                              value=0.0, step=0.01, key=f'sem_gpa_{i}', format="%.2f")
+            with col2:
+                semester_credits = st.number_input(f"Credit Hours", min_value=0.0, max_value=50.0,
+                                                  value=0.0, step=0.5, key=f'sem_credits_{i}')
+            
+            semesters_data.append({
+                'gpa': semester_gpa,
+                'credit_hours': semester_credits
+            })
+            
+            if i < st.session_state.num_semesters - 1:
+                st.markdown("---")
+        
+        # Calculate Button
+        st.markdown("---")
+        if st.button("🧮 Calculate CGPA", type="primary", key='calc_cgpa', use_container_width=True):
+            # Validate inputs
+            valid_inputs = True
+            for i, semester in enumerate(semesters_data):
+                if semester['credit_hours'] < 0:
+                    st.error(f"❌ Semester {i+1}: Credit hours cannot be negative")
+                    valid_inputs = False
+            
+            if valid_inputs:
+                total_grade_points = 0
+                total_credit_hours = 0
+                semester_results = []
+                
+                # Calculate for each semester
+                for i, semester in enumerate(semesters_data):
+                    if semester['credit_hours'] > 0:
+                        grade_points = semester['gpa'] * semester['credit_hours']
+                        total_grade_points += grade_points
+                        total_credit_hours += semester['credit_hours']
+                        
+                        semester_results.append({
+                            'Semester': f"Semester {i+1}",
+                            'GPA': f"{semester['gpa']:.2f}",
+                            'Credit Hours': f"{semester['credit_hours']:.2f}",
+                            'Grade Points': f"{grade_points:.2f}"
+                        })
+                
+                if total_credit_hours > 0:
+                    final_cgpa = total_grade_points / total_credit_hours
+                    
+                    # Display results
+                    st.success("### ✅ CGPA Calculated Successfully!")
+                    
+                    # Semester Results Table
+                    st.subheader("📊 Semester-wise Results")
+                    df = pd.DataFrame(semester_results)
+                    st.dataframe(df, use_container_width=True, hide_index=True)
+                    
+                    # Summary Metrics
+                    st.subheader("📈 Academic Summary")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.markdown(f"""
+                            <div class="metric-card">
+                                <h4>Total Credit Hours</h4>
+                                <h2>{total_credit_hours:.2f}</h2>
+                            </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col2:
+                        st.markdown(f"""
+                            <div class="metric-card">
+                                <h4>Total Grade Points</h4>
+                                <h2>{total_grade_points:.2f}</h2>
+                            </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col3:
+                        cgpa_color = "#28a745" if final_cgpa >= 3.0 else "#ffc107" if final_cgpa >= 2.0 else "#dc3545"
+                        st.markdown(f"""
+                            <div class="metric-card">
+                                <h4>Overall CGPA</h4>
+                                <h2 style="color: {cgpa_color}">{final_cgpa:.2f}</h2>
+                            </div>
+                        """, unsafe_allow_html=True)
+                    
+                    # Store calculation
+                    student_name = user_name_cgpa if user_name_cgpa else f"Student_{len(st.session_state.cgpa_calculations)+1}"
+                    
+                    calculation_data = {
+                        'student_name': student_name,
+                        'student_id': student_id_cgpa,
+                        'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        'semesters': semester_results,
+                        'summary': {
+                            'cgpa': final_cgpa,
+                            'total_credit_hours': total_credit_hours,
+                            'total_grade_points': total_grade_points
+                        }
+                    }
+                    
+                    st.session_state.cgpa_calculations.append(calculation_data)
+                    
+                    # Download Section
+                    st.markdown("---")
+                    st.subheader("📥 Download Results")
+                    
+                    export_data = {
+                        'semesters': semester_results,
+                        'summary': {
+                            'cgpa': final_cgpa,
+                            'total_credit_hours': total_credit_hours,
+                            'total_grade_points': total_grade_points
+                        }
+                    }
+                    
+                    excel_file = export_to_excel(export_data, 'CGPA', student_name)
+                    
+                    st.download_button(
+                        label="⬇️ Download CGPA Report",
+                        data=excel_file,
+                        file_name=f"CGPA_Report_{student_name.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+                    
+                    # Success Message
+                    st.info("### ❤️ Thank You! Your CGPA has been calculated successfully.")
+                    
+                    # Update semester count
+                    st.session_state.num_semesters = len(semesters_data)
+                else:
+                    st.error("❌ Total credit hours must be greater than zero!")
+    
+    # ============= GRADING SCALE TAB =============
+    with tab3:
+        st.header("📋 SMIU Grading Scale")
+        
+        # Grading Table
+        grade_df = pd.DataFrame(GRADE_TABLE, columns=['Min %', 'Max %', 'Letter Grade', 'Grade Point'])
+        grade_df['Percentage Range'] = grade_df.apply(lambda x: f"{x['Min %']}% - {x['Max %']}%", axis=1)
+        
+        display_df = grade_df[['Percentage Range', 'Letter Grade', 'Grade Point']]
+        
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        
+        # Calculation Formulas
+        st.markdown("---")
         col1, col2 = st.columns(2)
         
         with col1:
-            if st.session_state.gpa_data:
-                excel_file = export_all_gpa_data()
-                if excel_file:
-                    st.download_button(
-                        label="📥 Export All GPA Records",
-                        data=excel_file,
-                        file_name=f"All_GPA_Records_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
-                st.info(f"Total GPA Records: {len(st.session_state.gpa_data)} students")
-            else:
-                st.warning("No GPA records to export")
+            st.markdown("""
+            ### 📊 GPA Calculation
+            **For a course:**
+            ```
+            Course GPA = Grade Point × Credit Hours
+            ```
+            
+            **For semester:**
+            ```
+            Semester GPA = Σ(Course GPA) ÷ Σ(Credit Hours)
+            ```
+            """)
         
         with col2:
-            if st.session_state.cgpa_data:
-                excel_file = export_all_cgpa_data()
-                if excel_file:
-                    st.download_button(
-                        label="📥 Export All CGPA Records",
-                        data=excel_file,
-                        file_name=f"All_CGPA_Records_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
-                st.info(f"Total CGPA Records: {len(st.session_state.cgpa_data)} students")
-            else:
-                st.warning("No CGPA records to export")
-
-# Footer
-st.markdown("---")
-st.markdown("""
-    <div style='text-align: center; color: #666; padding: 20px;'>
-        <p><strong>Made By Muhammad Moiz | SMIU GPA & CGPA Calculator</strong></p>
-        <p style='font-size: 14px;'>Your data is processed temporarily and not stored permanently.</p>
-        <p style='font-size: 12px; color: #888;'>© 2024 Sindh Madressatul Islam University</p>
+            st.markdown("""
+            ### 📈 CGPA Calculation
+            **For semester:**
+            ```
+            Semester Points = Semester GPA × Semester Credits
+            ```
+            
+            **Overall:**
+            ```
+            Overall CGPA = Σ(Semester Points) ÷ Σ(Total Credits)
+            ```
+            """)
+        
+        # Notes
+        st.markdown("---")
+        st.markdown("""
+        ### ℹ️ Important Notes
+        1. Minimum passing grade is 'D' (50% marks)
+        2. Credit hours determine course weight in GPA
+        3. Incomplete ('I') and Withdrawal ('W') grades don't affect GPA
+        4. Calculations follow SMIU's official grading policy
+        """)
+    
+    # ============= FOOTER =============
+    st.markdown("---")
+    st.markdown(f"""
+    <div style='text-align: center; color: #666; padding: 2rem 0;'>
+        <p style='font-size: 0.9rem; margin-bottom: 0.5rem;'>
+            <strong>© 2024 {st.session_state.app_settings['institution_name']} - GPA & CGPA Calculator</strong>
+        </p>
+        <p style='font-size: 0.8rem; margin-bottom: 0.5rem; opacity: 0.8;'>
+            Developed by Muhammad Moiz | Computer Science Department
+        </p>
+        <p style='font-size: 0.75rem; opacity: 0.7;'>
+            ⚠️ Your data is processed temporarily and not stored permanently.
+            Calculations are based on SMIU's official grading policy.
+        </p>
     </div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+
+# ============= DEBUG INFO (Visible only to admin) =============
+if st.session_state.admin_logged_in:
+    with st.sidebar:
+        st.markdown("---")
+        with st.expander("🔧 Debug Info"):
+            st.write("**Session State:**")
+            st.json({
+                'admin_logged_in': st.session_state.admin_logged_in,
+                'short_url_code': st.session_state.short_url_code,
+                'gpa_count': len(st.session_state.gpa_calculations),
+                'cgpa_count': len(st.session_state.cgpa_calculations)
+            })
+            
+            # Test URL generator
+            if st.session_state.short_url_code:
+                test_url = f"{st.session_state.app_settings['base_url']}/?short={st.session_state.short_url_code}"
+                st.code(test_url, language="text")
+                st.caption("Test this URL in a new tab")
