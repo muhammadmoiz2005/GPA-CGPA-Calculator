@@ -1,0 +1,91 @@
+[
+  {
+    "user_name": "Muhammad Moiz",
+    "timestamp": "2026-02-06 00:17:36",
+    "courses": [
+      {
+        "course_name": "Applied Physics",
+        "total_marks": 100.0,
+        "obtained_marks": 76.0,
+        "credit_hours": 2.0,
+        "percentage": 76.0,
+        "grade": "B+",
+        "gpa": 3.33,
+        "grade_points": 6.66
+      },
+      {
+        "course_name": "Applied Physics Lab ",
+        "total_marks": 100.0,
+        "obtained_marks": 88.0,
+        "credit_hours": 1.0,
+        "percentage": 88.0,
+        "grade": "A-",
+        "gpa": 3.66,
+        "grade_points": 3.66
+      },
+      {
+        "course_name": "COAL Lab ",
+        "total_marks": 100.0,
+        "obtained_marks": 96.0,
+        "credit_hours": 1.0,
+        "percentage": 96.0,
+        "grade": "A",
+        "gpa": 4.0,
+        "grade_points": 4.0
+      },
+      {
+        "course_name": "Advance Statistics Lab ",
+        "total_marks": 100.0,
+        "obtained_marks": 98.0,
+        "credit_hours": 1.0,
+        "percentage": 98.0,
+        "grade": "A",
+        "gpa": 4.0,
+        "grade_points": 4.0
+      },
+      {
+        "course_name": "Intro of DS Lab ",
+        "total_marks": 100.0,
+        "obtained_marks": 96.0,
+        "credit_hours": 1.0,
+        "percentage": 96.0,
+        "grade": "A",
+        "gpa": 4.0,
+        "grade_points": 4.0
+      },
+      {
+        "course_name": "Intro of DS ",
+        "total_marks": 100.0,
+        "obtained_marks": 76.0,
+        "credit_hours": 2.0,
+        "percentage": 76.0,
+        "grade": "B+",
+        "gpa": 3.33,
+        "grade_points": 6.66
+      },
+      {
+        "course_name": "Expo Writing",
+        "total_marks": 100.0,
+        "obtained_marks": 70.0,
+        "credit_hours": 3.0,
+        "percentage": 70.0,
+        "grade": "B-",
+        "gpa": 2.66,
+        "grade_points": 7.98
+      },
+      {
+        "course_name": "Islamic Studies",
+        "total_marks": 100.0,
+        "obtained_marks": 80.0,
+        "credit_hours": 1.0,
+        "percentage": 80.0,
+        "grade": "A-",
+        "gpa": 3.66,
+        "grade_points": 3.66
+      }
+    ],
+    "final_gpa": 3.3850000000000002,
+    "total_credit_hours": 12.0,
+    "total_grade_points": 40.620000000000005
+  }
+]

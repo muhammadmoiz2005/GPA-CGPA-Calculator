@@ -1,0 +1,30 @@
+{
+  "base_url": "http://localhost:8501/",
+  "short_codes": {
+    "AoGt2hZd": {
+      "created_at": "2026-02-05 20:33:26",
+      "created_by": "admin",
+      "full_url": "http://localhost:8501/?student=AoGt2hZd",
+      "status": "active",
+      "base_url_used": "http://localhost:8501"
+    }
+  },
+  "active_short_codes": [
+    "AoGt2hZd"
+  ],
+  "url_history": [
+    {
+      "timestamp": "2026-02-05 20:33:23",
+      "action": "history_cleared",
+      "records_deleted": 1,
+      "by": "admin"
+    },
+    {
+      "timestamp": "2026-02-05 20:33:26",
+      "action": "created",
+      "code": "AoGt2hZd",
+      "by": "admin",
+      "url": "http://localhost:8501/?student=AoGt2hZd"
+    }
+  ]
+}

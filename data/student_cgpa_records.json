@@ -1,0 +1,35 @@
+[
+  {
+    "user_name": "Muhammad Moiz",
+    "timestamp": "2026-02-06 00:30:14",
+    "semesters": [
+      {
+        "semester_number": 1,
+        "semester_gpa": 2.879,
+        "credit_hours": 17.0,
+        "grade_points": 48.943
+      },
+      {
+        "semester_number": 2,
+        "semester_gpa": 3.526,
+        "credit_hours": 17.0,
+        "grade_points": 59.94199999999999
+      },
+      {
+        "semester_number": 3,
+        "semester_gpa": 3.486,
+        "credit_hours": 17.0,
+        "grade_points": 59.262
+      },
+      {
+        "semester_number": 4,
+        "semester_gpa": 3.385,
+        "credit_hours": 12.0,
+        "grade_points": 40.62
+      }
+    ],
+    "final_cgpa": 3.313761904761905,
+    "total_credit_hours": 63.0,
+    "total_grade_points": 208.767
+  }
+]
