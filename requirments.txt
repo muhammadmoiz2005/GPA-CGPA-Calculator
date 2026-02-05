@@ -1,3 +1,31 @@
-streamlit
-pandas
-openpyxl
+# ============================================
+# SMIU GPA & CGPA Management System
+# Required Python Packages
+# ============================================
+
+# Core Application Framework
+streamlit==1.29.0
+    # Web application framework for creating the UI
+    # Provides: st.set_page_config, st.title, st.button, etc.
+    # Features: Data visualization, interactive widgets, web deployment
+
+# Data Processing & Analysis
+pandas==2.1.4
+    # Data manipulation and analysis library
+    # Provides: DataFrame, data filtering, Excel export functionality
+    # Used for: Student records management, GPA/CGPA calculations
+
+# Excel File Operations
+openpyxl==3.1.2
+    # Read/write Excel 2010 xlsx/xlsm files
+    # Provides: ExcelWriter for exporting GPA/CGPA reports
+    # Features: Sheet creation, formatting, data export
+
+# Development & Testing (Optional)
+pytest==7.4.3              # For unit testing (optional)
+black==23.11.0             # Code formatter (optional)
+flake8==6.1.0              # Linter (optional)
+
+# Documentation (Optional)
+mkdocs==1.5.3              # Documentation generator (optional)
+mkdocs-material==9.4.1     # Material theme for docs (optional)
