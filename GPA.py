@@ -192,6 +192,82 @@ def export_to_excel(data, calculation_type, student_name=None):
     output.seek(0)
     return output
 
+def export_to_csv(data, calculation_type, student_name=None):
+    """Export data to CSV format"""
+    if calculation_type == 'GPA':
+        if student_name:  # Individual student
+            # Create two CSV files for individual report
+            if 'summary' in data:
+                summary_data = data['summary']
+                courses_data = data.get('courses', [])
+            else:
+                summary_data = {
+                    'total_credit_hours': data.get('total_credit_hours', 0),
+                    'total_grade_points': data.get('total_grade_points', 0),
+                    'gpa': data.get('final_gpa', 0),
+                    'timestamp': data.get('timestamp', '')
+                }
+                courses_data = data.get('courses', [])
+            
+            # Create summary CSV
+            summary_df = pd.DataFrame({
+                'Metric': ['Student Name', 'Total Credit Hours', 'Total Grade Points', 'Final GPA', 'Date'],
+                'Value': [student_name, 
+                         summary_data.get('total_credit_hours', 0), 
+                         summary_data.get('total_grade_points', 0),
+                         summary_data.get('gpa', 0),
+                         summary_data.get('timestamp', '')]
+            })
+            
+            # Create courses CSV if exists
+            courses_csv = None
+            if courses_data:
+                courses_df = pd.DataFrame(courses_data)
+                courses_df.index = courses_df.index + 1
+                courses_df.index.name = 'Course No.'
+                courses_csv = courses_df.to_csv(index=True)
+            
+            return summary_df.to_csv(index=False), courses_csv
+        else:  # All students
+            df = pd.DataFrame(data)
+            return df.to_csv(index=False), None
+    else:  # CGPA
+        if student_name:  # Individual student
+            if 'summary' in data:
+                summary_data = data['summary']
+                semesters_data = data.get('semesters', [])
+            else:
+                summary_data = {
+                    'total_credit_hours': data.get('total_credit_hours', 0),
+                    'total_grade_points': data.get('total_grade_points', 0),
+                    'cgpa': data.get('final_cgpa', 0),
+                    'timestamp': data.get('timestamp', '')
+                }
+                semesters_data = data.get('semesters', [])
+            
+            # Create summary CSV
+            summary_df = pd.DataFrame({
+                'Metric': ['Student Name', 'Total Credit Hours', 'Total Grade Points', 'Final CGPA', 'Date'],
+                'Value': [student_name,
+                         summary_data.get('total_credit_hours', 0), 
+                         summary_data.get('total_grade_points', 0),
+                         summary_data.get('cgpa', 0),
+                         summary_data.get('timestamp', '')]
+            })
+            
+            # Create semesters CSV if exists
+            semesters_csv = None
+            if semesters_data:
+                semesters_df = pd.DataFrame(semesters_data)
+                semesters_df.index = semesters_df.index + 1
+                semesters_df.index.name = 'Semester No.'
+                semesters_csv = semesters_df.to_csv(index=True)
+            
+            return summary_df.to_csv(index=False), semesters_csv
+        else:  # All students
+            df = pd.DataFrame(data)
+            return df.to_csv(index=False), None
+
 # Custom CSS
 st.markdown("""
     <style>
@@ -306,6 +382,13 @@ st.markdown("""
         max-width: 1200px;
         margin: 0 auto;
     }
+    .export-option {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 10px;
+        border-left: 4px solid #28a745;
+        margin: 0.5rem 0;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -350,8 +433,6 @@ def admin_login():
         if st.button("← Back to Calculator"):
             st.session_state.show_admin_login = False
             st.rerun()
-    
-    st.markdown("</div>", unsafe_allow_html=True)
 
 # Show deactivated URL message to students
 def show_deactivated_message():
@@ -993,14 +1074,33 @@ def admin_panel():
                 st.dataframe(history_df, use_container_width=True)
                 
                 # Export history option
-                if st.button("📥 Export History to CSV"):
-                    csv = history_df.to_csv(index=False)
-                    st.download_button(
-                        label="Download CSV",
-                        data=csv,
-                        file_name=f"url_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                        mime="text/csv"
-                    )
+                st.markdown("### 📥 Export History")
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if st.button("Export History to CSV"):
+                        csv = history_df.to_csv(index=False)
+                        st.download_button(
+                            label="Download CSV",
+                            data=csv,
+                            file_name=f"url_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv"
+                        )
+                
+                with col2:
+                    if st.button("Export History to Excel"):
+                        # Create Excel file
+                        output = io.BytesIO()
+                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                            history_df.to_excel(writer, sheet_name='URL History', index=False)
+                        output.seek(0)
+                        
+                        st.download_button(
+                            label="Download Excel",
+                            data=output,
+                            file_name=f"url_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
             else:
                 st.info("No history records found with the selected filters.")
         else:
@@ -1039,34 +1139,77 @@ def admin_panel():
                 
                 # Export options
                 st.subheader("📥 Export Data")
+                st.markdown("**Export All Records:**")
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    if st.button("Download All GPA Records (Excel)"):
+                    if st.button("📊 Download All GPA Records (Excel)"):
                         excel_file = export_to_excel(gpa_data, 'GPA')
                         st.download_button(
-                            label="Click to Download",
+                            label="Click to Download Excel",
                             data=excel_file,
                             file_name=f"All_GPA_Records_{datetime.now().strftime('%Y%m%d')}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
                 
                 with col2:
-                    student_names = list(set([r.get('user_name', '') for r in filtered_data]))
-                    selected_student = st.selectbox("Select Student for Individual Report", [""] + student_names)
-                    
-                    if selected_student:
-                        student_records = [r for r in filtered_data if r.get('user_name', '') == selected_student]
-                        if student_records:
-                            # Take the most recent record for the student
-                            latest_record = max(student_records, key=lambda x: x.get('timestamp', ''))
+                    if st.button("📄 Download All GPA Records (CSV)"):
+                        csv_data, _ = export_to_csv(gpa_data, 'GPA')
+                        st.download_button(
+                            label="Click to Download CSV",
+                            data=csv_data,
+                            file_name=f"All_GPA_Records_{datetime.now().strftime('%Y%m%d')}.csv",
+                            mime="text/csv"
+                        )
+                
+                # Individual student export
+                st.markdown("---")
+                st.markdown("**Export Individual Student Report:**")
+                student_names = list(set([r.get('user_name', '') for r in filtered_data]))
+                selected_student = st.selectbox("Select Student for Individual Report", [""] + student_names)
+                
+                if selected_student:
+                    student_records = [r for r in filtered_data if r.get('user_name', '') == selected_student]
+                    if student_records:
+                        # Take the most recent record for the student
+                        latest_record = max(student_records, key=lambda x: x.get('timestamp', ''))
+                        
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            # Excel Export
                             excel_file = export_to_excel(latest_record, 'GPA', selected_student)
                             st.download_button(
-                                label=f"Download {selected_student}'s Report",
+                                label=f"📊 Download {selected_student}'s Report (Excel)",
                                 data=excel_file,
                                 file_name=f"GPA_Report_{selected_student}_{datetime.now().strftime('%Y%m%d')}.xlsx",
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
+                        
+                        with col2:
+                            # CSV Export (two files: summary and courses)
+                            st.markdown(f"**CSV Export for {selected_student}:**")
+                            
+                            # Get CSV data
+                            summary_csv, courses_csv = export_to_csv(latest_record, 'GPA', selected_student)
+                            
+                            # Summary CSV
+                            if summary_csv:
+                                st.download_button(
+                                    label="📄 Download Summary CSV",
+                                    data=summary_csv,
+                                    file_name=f"GPA_Summary_{selected_student}_{datetime.now().strftime('%Y%m%d')}.csv",
+                                    mime="text/csv"
+                                )
+                            
+                            # Courses CSV (if available)
+                            if courses_csv:
+                                st.download_button(
+                                    label="📄 Download Course Details CSV",
+                                    data=courses_csv,
+                                    file_name=f"GPA_Courses_{selected_student}_{datetime.now().strftime('%Y%m%d')}.csv",
+                                    mime="text/csv"
+                                )
             else:
                 st.info("No records found with the selected filters.")
         else:
@@ -1105,35 +1248,78 @@ def admin_panel():
                 
                 # Export options
                 st.subheader("📥 Export Data")
+                st.markdown("**Export All Records:**")
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    if st.button("Download All CGPA Records (Excel)"):
+                    if st.button("📊 Download All CGPA Records (Excel)"):
                         excel_file = export_to_excel(cgpa_data, 'CGPA')
                         st.download_button(
-                            label="Click to Download",
+                            label="Click to Download Excel",
                             data=excel_file,
                             file_name=f"All_CGPA_Records_{datetime.now().strftime('%Y%m%d')}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
                 
                 with col2:
-                    student_names = list(set([r.get('user_name', '') for r in filtered_data]))
-                    selected_student = st.selectbox("Select Student for Individual Report", 
-                                                   [""] + student_names, key="cgpa_student")
-                    
-                    if selected_student:
-                        student_records = [r for r in filtered_data if r.get('user_name', '') == selected_student]
-                        if student_records:
-                            # Take the most recent record for the student
-                            latest_record = max(student_records, key=lambda x: x.get('timestamp', ''))
+                    if st.button("📄 Download All CGPA Records (CSV)"):
+                        csv_data, _ = export_to_csv(cgpa_data, 'CGPA')
+                        st.download_button(
+                            label="Click to Download CSV",
+                            data=csv_data,
+                            file_name=f"All_CGPA_Records_{datetime.now().strftime('%Y%m%d')}.csv",
+                            mime="text/csv"
+                        )
+                
+                # Individual student export
+                st.markdown("---")
+                st.markdown("**Export Individual Student Report:**")
+                student_names = list(set([r.get('user_name', '') for r in filtered_data]))
+                selected_student = st.selectbox("Select Student for Individual Report", 
+                                               [""] + student_names, key="cgpa_student")
+                
+                if selected_student:
+                    student_records = [r for r in filtered_data if r.get('user_name', '') == selected_student]
+                    if student_records:
+                        # Take the most recent record for the student
+                        latest_record = max(student_records, key=lambda x: x.get('timestamp', ''))
+                        
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            # Excel Export
                             excel_file = export_to_excel(latest_record, 'CGPA', selected_student)
                             st.download_button(
-                                label=f"Download {selected_student}'s Report",
+                                label=f"📊 Download {selected_student}'s Report (Excel)",
                                 data=excel_file,
                                 file_name=f"CGPA_Report_{selected_student}_{datetime.now().strftime('%Y%m%d')}.xlsx",
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
+                        
+                        with col2:
+                            # CSV Export (two files: summary and semesters)
+                            st.markdown(f"**CSV Export for {selected_student}:**")
+                            
+                            # Get CSV data
+                            summary_csv, semesters_csv = export_to_csv(latest_record, 'CGPA', selected_student)
+                            
+                            # Summary CSV
+                            if summary_csv:
+                                st.download_button(
+                                    label="📄 Download Summary CSV",
+                                    data=summary_csv,
+                                    file_name=f"CGPA_Summary_{selected_student}_{datetime.now().strftime('%Y%m%d')}.csv",
+                                    mime="text/csv"
+                                )
+                            
+                            # Semesters CSV (if available)
+                            if semesters_csv:
+                                st.download_button(
+                                    label="📄 Download Semester Details CSV",
+                                    data=semesters_csv,
+                                    file_name=f"CGPA_Semesters_{selected_student}_{datetime.now().strftime('%Y%m%d')}.csv",
+                                    mime="text/csv"
+                                )
             else:
                 st.info("No records found with the selected filters.")
         else:
@@ -1373,24 +1559,51 @@ def student_calculator_interface(short_code=None):
                     
                     st.info("❤ Thank You! For using the SMIU Semester GPA Calculator.")
                     
-                    # Export to Excel for student
-                    export_data = {
-                        'courses': course_results,
-                        'summary': {
-                            'gpa': final_gpa,
-                            'total_credit_hours': total_credit_hours,
-                            'total_grade_points': total_grade_points,
-                            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        }
-                    }
-                    excel_file = export_to_excel(export_data, 'GPA', user_name)
+                    # Export options
+                    st.subheader("📥 Download Report")
+                    col1, col2 = st.columns(2)
                     
-                    st.download_button(
-                        label="📥 Download Semester GPA Report",
-                        data=excel_file,
-                        file_name=f"GPA_Report_{user_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+                    with col1:
+                        # Export to Excel for student
+                        export_data = {
+                            'courses': course_results,
+                            'summary': {
+                                'gpa': final_gpa,
+                                'total_credit_hours': total_credit_hours,
+                                'total_grade_points': total_grade_points,
+                                'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            }
+                        }
+                        excel_file = export_to_excel(export_data, 'GPA', user_name)
+                        
+                        st.download_button(
+                            label="📊 Download Excel Report",
+                            data=excel_file,
+                            file_name=f"GPA_Report_{user_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                    
+                    with col2:
+                        # Export to CSV for student
+                        summary_csv, courses_csv = export_to_csv(export_data, 'GPA', user_name)
+                        
+                        st.markdown("**CSV Reports:**")
+                        
+                        if summary_csv:
+                            st.download_button(
+                                label="📄 Download Summary CSV",
+                                data=summary_csv,
+                                file_name=f"GPA_Summary_{user_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                mime="text/csv"
+                            )
+                        
+                        if courses_csv:
+                            st.download_button(
+                                label="📄 Download Course Details CSV",
+                                data=courses_csv,
+                                file_name=f"GPA_Courses_{user_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                mime="text/csv"
+                            )
                 else:
                     st.error("❌ Please enter valid credit hours!")
     
@@ -1530,24 +1743,51 @@ def student_calculator_interface(short_code=None):
                     
                     st.info("❤ Thank You! For using the SMIU CGPA Calculator.")
                     
-                    # Export to Excel
-                    export_data = {
-                        'semesters': semester_results,
-                        'summary': {
-                            'cgpa': final_cgpa,
-                            'total_credit_hours': total_credit_hours,
-                            'total_grade_points': total_grade_points,
-                            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        }
-                    }
-                    excel_file = export_to_excel(export_data, 'CGPA', user_name_cgpa)
+                    # Export options
+                    st.subheader("📥 Download Report")
+                    col1, col2 = st.columns(2)
                     
-                    st.download_button(
-                        label="📥 Download CGPA Report",
-                        data=excel_file,
-                        file_name=f"CGPA_Report_{user_name_cgpa}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+                    with col1:
+                        # Export to Excel for student
+                        export_data = {
+                            'semesters': semester_results,
+                            'summary': {
+                                'cgpa': final_cgpa,
+                                'total_credit_hours': total_credit_hours,
+                                'total_grade_points': total_grade_points,
+                                'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            }
+                        }
+                        excel_file = export_to_excel(export_data, 'CGPA', user_name_cgpa)
+                        
+                        st.download_button(
+                            label="📊 Download Excel Report",
+                            data=excel_file,
+                            file_name=f"CGPA_Report_{user_name_cgpa}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                    
+                    with col2:
+                        # Export to CSV for student
+                        summary_csv, semesters_csv = export_to_csv(export_data, 'CGPA', user_name_cgpa)
+                        
+                        st.markdown("**CSV Reports:**")
+                        
+                        if summary_csv:
+                            st.download_button(
+                                label="📄 Download Summary CSV",
+                                data=summary_csv,
+                                file_name=f"CGPA_Summary_{user_name_cgpa}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                mime="text/csv"
+                            )
+                        
+                        if semesters_csv:
+                            st.download_button(
+                                label="📄 Download Semester Details CSV",
+                                data=semesters_csv,
+                                file_name=f"CGPA_Semesters_{user_name_cgpa}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                mime="text/csv"
+                            )
                 else:
                     st.error("❌ Please enter valid credit hours!")
     
